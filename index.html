@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Geo Finanzas</title>
+<style>
+body {
+  background-color: #111;
+  color: #eee;
+  font-family: Arial, sans-serif;
+  margin: 0;
+  padding: 20px;
+}
+h1 { text-align: center; }
+.card {
+  background: #1e1e1e;
+  padding: 15px;
+  margin-bottom: 15px;
+  border-radius: 8px;
+}
+button {
+  padding: 10px;
+  margin: 5px 0;
+  width: 100%;
+  background: #333;
+  color: #eee;
+  border: none;
+  border-radius: 6px;
+}
+button:hover { background: #444; }
+input {
+  padding: 8px;
+  width: 100%;
+  margin-bottom: 10px;
+  background: #222;
+  color: #eee;
+  border: 1px solid #444;
+  border-radius: 6px;
+}
+.alerta {
+  color: red;
+  font-weight: bold;
+}
+</style>
+</head>
+<body>
+
+<div id="app"></div>
+
+<script>
+let db;
+let data = {
+  config: null,
+  movimientos: []
+};
+
+function saveData() {
+  localStorage.setItem("geoFinanzasData", JSON.stringify(data));
+}
+
+function loadData() {
+  const stored = localStorage.getItem("geoFinanzasData");
+  if (stored) data = JSON.parse(stored);
+}
+
+function init() {
+  loadData();
+  if (!localStorage.getItem("geoPin")) {
+    renderSetPin();
+  } else {
+    renderPin();
+  }
+}
+
+function renderSetPin() {
+  document.getElementById("app").innerHTML = `
+    <h1>Configurar PIN</h1>
+    <input type="password" id="newPin" placeholder="Nuevo PIN 4 dígitos">
+    <button onclick="setPin()">Guardar PIN</button>
+  `;
+}
+
+function setPin() {
+  const pin = document.getElementById("newPin").value;
+  if (pin.length === 4) {
+    localStorage.setItem("geoPin", pin);
+    renderConfig();
+  }
+}
+
+function renderPin() {
+  document.getElementById("app").innerHTML = `
+    <h1>Introducir PIN</h1>
+    <input type="password" id="pinInput" placeholder="PIN">
+    <button onclick="checkPin()">Entrar</button>
+  `;
+}
+
+function checkPin() {
+  const pin = document.getElementById("pinInput").value;
+  if (pin === localStorage.getItem("geoPin")) {
+    if (!data.config) renderConfig();
+    else renderMain();
+  }
+}
+
+function renderConfig() {
+  document.getElementById("app").innerHTML = `
+    <h1>Estado Inicial</h1>
+    <input type="number" id="saldoInicial" placeholder="Saldo actual">
+    <input type="number" id="fondoInicial" placeholder="Fondo combustible actual">
+    <input type="number" id="facturacionInicial" placeholder="Facturación acumulada mes">
+    <input type="number" id="combustibleInicial" placeholder="Combustible acumulado mes">
+    <button onclick="saveConfig()">Guardar</button>
+  `;
+}
+
+function saveConfig() {
+  data.config = {
+    saldoInicial: parseFloat(document.getElementById("saldoInicial").value) || 0,
+    fondoCombustible: parseFloat(document.getElementById("fondoInicial").value) || 0,
+    facturacionInicial: parseFloat(document.getElementById("facturacionInicial").value) || 0,
+    combustibleInicial: parseFloat(document.getElementById("combustibleInicial").value) || 0,
+    cajaMinima: 50
+  };
+  saveData();
+  renderMain();
+}
+
+function calcular() {
+  let saldo = data.config.saldoInicial;
+  let fondo = data.config.fondoCombustible;
+  let facturacion = data.config.facturacionInicial;
+  let combustibleMes = data.config.combustibleInicial;
+  let pagos = 0;
+
+  data.movimientos.forEach(m => {
+    if (m.tipo === "facturacion") {
+      facturacion += m.total;
+      saldo += m.efectivo;
+    }
+    if (m.tipo === "combustible") {
+      saldo -= m.importe;
+      fondo -= m.importe;
+      combustibleMes += m.importe;
+    }
+    if (m.tipo === "gasto") {
+      saldo -= m.importe;
+    }
+    if (m.tipo === "pago") {
+      saldo += m.importe;
+      pagos += m.importe;
+    }
+  });
+
+  const porcentaje = facturacion < 5000 ? 0.45 : 0.5;
+  const ingresoTeorico = facturacion * porcentaje;
+  const beneficioTaxi = ingresoTeorico - combustibleMes;
+  const disponibleLibre = saldo - fondo;
+
+  return {
+    saldo,
+    fondo,
+    disponibleLibre,
+    facturacion,
+    ingresoTeorico,
+    beneficioTaxi,
+    porcentaje
+  };
+}
+
+function renderMain() {
+  const r = calcular();
+
+  let listaMovimientos = "";
+  data.movimientos.forEach((m, index) => {
+    listaMovimientos += `
+      <div style="border-bottom:1px solid #333; padding:8px 0;">
+        <strong>${m.tipo.toUpperCase()}</strong> - 
+        ${m.importe ? m.importe.toFixed(2) : m.total?.toFixed(2)} € 
+        <br>
+        <small>${new Date(m.fecha).toLocaleString()}</small>
+        <br>
+        <button onclick="editarMovimiento(${index})">Editar</button>
+        <button onclick="borrarMovimiento(${index})">Borrar</button>
+      </div>
+    `;
+  });
+
+  document.getElementById("app").innerHTML = `
+    <h1>Geo Finanzas</h1>
+
+    <div class="card">
+      <h2>Saldo: ${r.saldo.toFixed(2)} €</h2>
+      <p>Fondo combustible: ${r.fondo.toFixed(2)} €</p>
+      <p>Disponible libre: ${r.disponibleLibre.toFixed(2)} €</p>
+      ${r.disponibleLibre < data.config.cajaMinima ? '<p class="alerta">⚠ Liquidez baja</p>' : ''}
+    </div>
+
+    <div class="card">
+      <h3>Taxi mes actual</h3>
+      <p>Facturación: ${r.facturacion.toFixed(2)} €</p>
+      <p>% aplicado: ${(r.porcentaje * 100)}%</p>
+      <p>Ingreso teórico: ${r.ingresoTeorico.toFixed(2)} €</p>
+      <p>Beneficio taxi estimado: ${r.beneficioTaxi.toFixed(2)} €</p>
+    </div>
+
+    <div class="card">
+      <button onclick="addFacturacion()">💵 Facturación</button>
+      <button onclick="addCombustible()">⛽ Combustible</button>
+      <button onclick="addGasto()">💸 Gasto</button>
+      <button onclick="addPago()">🏦 Pago recibido</button>
+    </div>
+
+    <div class="card">
+      <h3>Movimientos</h3>
+      ${listaMovimientos || "<p>No hay movimientos aún</p>"}
+    </div>
+  `;
+}
+
+
+function addFacturacion() {
+  const total = parseFloat(prompt("Total facturado del día:")) || 0;
+  const efectivo = parseFloat(prompt("Cuánto fue en efectivo:")) || 0;
+  data.movimientos.push({
+    tipo: "facturacion",
+    total,
+    efectivo,
+    fecha: Date.now()
+  });
+  saveData();
+  renderMain();
+}
+
+
+function addCombustible() {
+  const importe = parseFloat(prompt("Importe combustible:")) || 0;
+  data.movimientos.push({
+    tipo: "combustible",
+    importe,
+    fecha: Date.now()
+  });
+  saveData();
+  renderMain();
+}
+
+
+function addGasto() {
+  const importe = parseFloat(prompt("Importe gasto:")) || 0;
+  data.movimientos.push({
+    tipo: "gasto",
+    importe,
+    fecha: Date.now()
+  });
+  saveData();
+  renderMain();
+}
+
+
+function addPago() {
+  const importe = parseFloat(prompt("Importe pago recibido:")) || 0;
+  data.movimientos.push({
+    tipo: "pago",
+    importe,
+    fecha: Date.now()
+  });
+  saveData();
+  renderMain();
+}
+
+function borrarMovimiento(index) {
+  if (confirm("¿Borrar movimiento?")) {
+    data.movimientos.splice(index, 1);
+    saveData();
+    renderMain();
+  }
+}
+
+function editarMovimiento(index) {
+  const m = data.movimientos[index];
+
+  if (m.tipo === "facturacion") {
+    const nuevoTotal = parseFloat(prompt("Nuevo total:", m.total)) || 0;
+    const nuevoEfectivo = parseFloat(prompt("Nuevo efectivo:", m.efectivo)) || 0;
+    m.total = nuevoTotal;
+    m.efectivo = nuevoEfectivo;
+  } else {
+    const nuevoImporte = parseFloat(prompt("Nuevo importe:", m.importe)) || 0;
+    m.importe = nuevoImporte;
+  }
+
+  saveData();
+  renderMain();
+}
+
+
+init();
+</script>
+</body>
+</html>
