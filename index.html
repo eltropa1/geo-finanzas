@@ -6,83 +6,23 @@
 <title>Geo Finanzas</title>
 
 <style>
-body {
-  background: #111;
-  color: #eee;
-  font-family: Arial, sans-serif;
-  padding: 20px;
-  margin: 0;
-}
+body { background:#111; color:#eee; font-family:Arial; padding:20px; margin:0;}
+.card { background:#1e1e1e; padding:15px; margin-bottom:15px; border-radius:8px;}
+button { padding:8px; background:#333; color:white; border:none; border-radius:6px;}
+input, select { width:100%; padding:8px; margin-bottom:10px; background:#222; color:white; border:1px solid #444;}
 
-.card {
-  background: #1e1e1e;
-  padding: 15px;
-  margin-bottom: 15px;
-  border-radius: 8px;
-}
+.row { display:flex; gap:10px;}
+.row button { flex:1; }
 
-button {
-  padding: 8px;
-  background: #333;
-  color: white;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-}
+.ingreso { color:#4caf50; }
+.gasto { color:#ff5252; }
 
-input, select {
-  width: 100%;
-  padding: 8px;
-  margin-bottom: 10px;
-  background: #222;
-  color: white;
-  border: 1px solid #444;
-  box-sizing: border-box;
-}
+.hist { display:flex; justify-content:space-between; border-bottom:1px solid #333; padding:8px 0;}
+.hist-left { width:60%; }
+.hist-right { width:40%; text-align:right; }
 
-.row {
-  display: flex;
-  gap: 10px;
-}
-
-.row button {
-  flex: 1;
-}
-
-.ingreso { color: #4caf50; }
-.gasto { color: #ff5252; }
-
-.hist {
-  display: flex;
-  justify-content: space-between;
-  border-bottom: 1px solid #333;
-  padding: 8px 0;
-}
-
-.hist-left { width: 60%; }
-.hist-right { width: 40%; text-align: right; }
-
-.small {
-  font-size: 12px;
-  color: #aaa;
-}
-
-.flash {
-  background: #2e7d32;
-  padding: 8px;
-  margin-bottom: 10px;
-  border-radius: 6px;
-  text-align: center;
-}
-
-.month-header {
-  cursor: pointer;
-  margin: 0 0 10px 0;
-}
-
-.kpi {
-  font-weight: bold;
-}
+.small { font-size:12px; color:#aaa; }
+.flash { background:#2e7d32; padding:8px; margin-bottom:10px; border-radius:6px; text-align:center;}
 </style>
 </head>
 
@@ -90,481 +30,445 @@ input, select {
 <div id="app"></div>
 
 <script>
+
 let data = {
-  config: null,
-  movimientos: [],
-  conceptos: ["cafe", "tabaco", "comida", "cole", "alquiler", "transporte", "orange", "luz", "internet", "seguro", "vaquita"],
-  precios: { cafe: 1.5, tabaco: 6.7 }
+config:null,
+movimientos:[],
+conceptos:["cafe","tabaco","comida","cole","alquiler","transporte","orange","luz","internet","seguro","vaquita"],
+precios:{ cafe:1.5, tabaco:6.7 }
 };
 
-let modo = "facturacion";
-let editIndex = null;
-let flashMsg = "";
+let modo="facturacion";
+let editIndex=null;
+let flashMsg="";
 
-function save() {
-  localStorage.setItem("geoData", JSON.stringify(data));
+function save(){ localStorage.setItem("geoData", JSON.stringify(data)); }
+function load(){ let d=localStorage.getItem("geoData"); if(d) data=JSON.parse(d); }
+
+function hoy(){
+return new Date().toISOString().split("T")[0];
 }
 
-function load() {
-  const d = localStorage.getItem("geoData");
-  if (d) data = JSON.parse(d);
-}
-
-function init() {
-  load();
-  if (!data.config) config();
-  else main();
-}
+function init(){ load(); if(!data.config) config(); else main(); }
 
 /* CONFIG */
 
-function config() {
-  app.innerHTML = `
-    <h2>Inicio</h2>
-    <input id="saldo" placeholder="Saldo">
-    <input id="vaq" placeholder="Vaquita">
-    <input id="fc" placeholder="Fondo combustible">
-    <input id="ff" placeholder="Fondo facturas">
-    <input id="factMes" placeholder="Facturación acumulada">
-    <input id="combMes" placeholder="Combustible acumulado">
-    <button onclick="saveConfig()">Guardar</button>
-  `;
+function config(){
+app.innerHTML=`
+<h2>Inicio</h2>
+<input id="saldo" placeholder="Saldo">
+<input id="vaq" placeholder="Vaquita">
+<input id="fc" placeholder="Fondo combustible">
+<input id="ff" placeholder="Fondo facturas">
+<input id="factMes" placeholder="Facturación acumulada">
+<input id="combMes" placeholder="Combustible acumulado">
+<button onclick="saveConfig()">Guardar</button>`;
 }
 
-function saveConfig() {
-  data.config = {
-    saldo: +saldo.value || 0,
-    vaquita: +vaq.value || 0,
-    fc: +fc.value || 0,
-    ff: +ff.value || 0,
-    factMes: +factMes.value || 0,
-    combMes: +combMes.value || 0
-  };
-  save();
-  main();
+function saveConfig(){
+data.config={
+saldo:+saldo.value||0,
+vaquita:+vaq.value||0,
+fc:+fc.value||0,
+ff:+ff.value||0,
+factMes:+factMes.value||0,
+combMes:+combMes.value||0
+};
+save(); main();
 }
 
-/* HELPERS FECHAS */
+/* FECHAS */
 
-function getMonthKey(fecha) {
-  const d = new Date(fecha);
-  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");
+function getMonthKey(fecha){
+const d = new Date(fecha);
+return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
 }
 
-function getDaysUntilEndOfMonth() {
-  const now = new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth();
-  const today = now.getDate();
-  const lastDay = new Date(year, month + 1, 0).getDate();
-  return lastDay - today;
+function getDaysUntilEndOfMonth(){
+const now=new Date();
+const last=new Date(now.getFullYear(), now.getMonth()+1,0).getDate();
+return last-now.getDate();
 }
 
 /* CALCULO */
 
-function calc() {
-  let s = data.config.saldo;
-  let v = data.config.vaquita;
-  let fc = data.config.fc;
-  let ff = data.config.ff;
-  let fact = data.config.factMes;
-  let efectivo = 0;
-  let tarjeta = 0;
-  let comb = data.config.combMes;
-  let anticipo = 0;
+function calc(){
 
-  let totalGastos = 0;
-  let totalOperativo = 0;
-  let stats = {};
+let s=data.config.saldo;
+let v=data.config.vaquita;
+let fc=data.config.fc;
+let ff=data.config.ff;
+let fact=data.config.factMes;
+let efectivo=0;
+let tarjeta=0;
+let comb=data.config.combMes;
+let anticipo=0;
 
-  const gastosFijos = ["alquiler", "facturas", "seguro", "luz", "internet", "orange", "cole"];
+let totalGastos=0;
+let totalOperativo=0;
+let stats={};
 
-  data.movimientos.forEach(m => {
-    if (m.tipo === "facturacion") {
-      fact += m.total;
-      efectivo += m.efectivo;
-      tarjeta += (m.total - m.efectivo);
-      s += m.efectivo;
-    }
+const gastosFijos=["alquiler","facturas","seguro","luz","internet","orange","cole"];
 
-    if (m.tipo === "anticipo") {
-      s += m.importe;
-      anticipo += m.importe;
-    }
+data.movimientos.forEach(m=>{
 
-    if (m.tipo === "gasto") {
-      s -= m.importe;
-      totalGastos += m.importe;
+if(m.tipo==="facturacion"){
+fact+=m.total;
+efectivo+=m.efectivo;
+tarjeta+=(m.total-m.efectivo);
+s+=m.efectivo;
+}
 
-      if (!stats[m.concepto]) stats[m.concepto] = 0;
-      stats[m.concepto] += m.importe;
+if(m.tipo==="anticipo"){
+s+=m.importe;
+anticipo+=m.importe;
+}
 
-      if (m.concepto === "vaquita") v += m.importe;
+if(m.tipo==="gasto"){
+s-=m.importe;
+totalGastos+=m.importe;
 
-      if (!gastosFijos.includes(m.concepto)) {
-        totalOperativo += m.importe;
-      }
-    }
+if(!stats[m.concepto]) stats[m.concepto]=0;
+stats[m.concepto]+=m.importe;
 
-    if (m.tipo === "comb") {
-      if (fc >= m.importe) {
-        fc -= m.importe;
-      } else {
-        const r = m.importe - fc;
-        fc = 0;
-        s -= r;
-      }
+if(m.concepto==="vaquita") v+=m.importe;
 
-      comb += m.importe;
-      totalGastos += m.importe;
-      stats["combustible"] = (stats["combustible"] || 0) + m.importe;
-      totalOperativo += m.importe;
-    }
+if(!gastosFijos.includes(m.concepto)){
+totalOperativo+=m.importe;
+}
+}
 
-    if (m.tipo === "toComb") {
-      v -= m.importe;
-      fc += m.importe;
-    }
+if(m.tipo==="comb"){
+if(fc>=m.importe) fc-=m.importe;
+else{
+let r=m.importe-fc;
+fc=0;
+s-=r;
+}
+comb+=m.importe;
+totalGastos+=m.importe;
+stats["combustible"]=(stats["combustible"]||0)+m.importe;
+totalOperativo+=m.importe;
+}
 
-    if (m.tipo === "toFact") {
-      v -= m.importe;
-      ff += m.importe;
-    }
-  });
+if(m.tipo==="toComb"){ v-=m.importe; fc+=m.importe; }
+if(m.tipo==="toFact"){ v-=m.importe; ff+=m.importe; }
 
-  /* TAXI */
+});
 
-  const porcentaje = fact < 5000 ? 0.45 : 0.5;
-  const tuTotal = fact * porcentaje;
-  const cobroReal = tuTotal - efectivo - anticipo;
+/* TAXI */
 
-  /* IA FINAL */
+let porcentaje=fact<5000?0.45:0.5;
+let tuTotal=fact*porcentaje;
+let cobroReal=tuTotal-efectivo-anticipo;
 
-  const diasRegistrados = Math.max(1, data.movimientos.length);
-  const gastoMedioOperativo = totalOperativo / diasRegistrados;
+/* IA */
 
-  const diasFinMes = getDaysUntilEndOfMonth();
-  const autonomiaDias = gastoMedioOperativo > 0 ? s / gastoMedioOperativo : 999;
-  const saldoPrevistoFinMes = s - (gastoMedioOperativo * diasFinMes);
-  const gastoMaximoDiario = diasFinMes > 0 ? s / diasFinMes : s;
+let diasFinMes=getDaysUntilEndOfMonth();
+let gastoMedioOperativo=totalOperativo/Math.max(1,data.movimientos.length);
 
-  let estadoMes = "Vas bien";
-  if (saldoPrevistoFinMes < 0) estadoMes = "No llegas";
-  else if (autonomiaDias < diasFinMes || saldoPrevistoFinMes < 100) estadoMes = "Vas justo";
+let saldoPrevisto=s-(gastoMedioOperativo*diasFinMes);
+let gastoMaximo=diasFinMes>0?s/diasFinMes:s;
 
-  let topConcepto = null;
-  let topValor = 0;
+let estado="Vas bien";
+if(saldoPrevisto<0) estado="No llegas";
+else if(saldoPrevisto<100) estado="Vas justo";
 
-  for (const k in stats) {
-    if (stats[k] > topValor) {
-      topValor = stats[k];
-      topConcepto = k;
-    }
-  }
+let topConcepto=null, topValor=0;
+for(let k in stats){
+if(stats[k]>topValor){ topValor=stats[k]; topConcepto=k; }
+}
 
-  const ahorroPotencial = topValor * 0.2;
+let ahorro=topValor*0.2;
 
-  let controlCombustible = "Combustible dentro de lo esperado";
-  if ((stats["combustible"] || 0) > 300) {
-    controlCombustible = "Combustible alto este mes";
-  }
+let controlComb="OK";
+if((stats["combustible"]||0)>300) controlComb="Combustible alto";
 
-  return {
-    s, v, fc, ff,
-    fact, efectivo, tarjeta, comb, anticipo,
-    tuTotal, cobroReal, porcentaje,
-    stats,
-    estadoMes,
-    gastoMedioOperativo,
-    diasFinMes,
-    autonomiaDias,
-    saldoPrevistoFinMes,
-    gastoMaximoDiario,
-    topConcepto,
-    topValor,
-    ahorroPotencial,
-    controlCombustible
-  };
+return {
+s,v,fc,ff,fact,efectivo,tarjeta,tuTotal,cobroReal,porcentaje,
+estado,gastoMaximo,saldoPrevisto,topConcepto,topValor,ahorro,controlComb,
+stats
+};
 }
 
 /* UI */
 
-function main() {
-  const r = calc();
+function main(){
 
-  /* STATS */
-  let statsHTML = "";
-  for (const k in r.stats) {
-    statsHTML += `<p>${k}: ${r.stats[k].toFixed(2)}€</p>`;
-  }
+let r=calc();
 
-  /* HISTORIAL POR MESES */
-  const grupos = {};
-  data.movimientos.forEach((m, i) => {
-    const key = getMonthKey(m.fecha || Date.now());
-    if (!grupos[key]) grupos[key] = [];
-    grupos[key].push({ m, i });
-  });
+/* HISTORIAL */
 
-  const actualKey = getMonthKey(Date.now());
+let grupos={};
+data.movimientos.forEach((m,i)=>{
+let key=getMonthKey(m.fecha||Date.now());
+if(!grupos[key]) grupos[key]=[];
+grupos[key].push({m,i});
+});
 
-  let lista = "";
+let actual=getMonthKey(Date.now());
 
-  for (const key in grupos) {
-    const abierto = key === actualKey;
+let lista="";
 
-    lista += `
-      <div class="card">
-        <h3 class="month-header" onclick="toggleMes('${key}')">${key} ${abierto ? "▼" : "▶"}</h3>
-        <div id="mes-${key}" style="display:${abierto ? "block" : "none"};">
-    `;
+for(let key in grupos){
 
-    grupos[key].forEach(obj => {
-      const m = obj.m;
-      const i = obj.i;
-      const clase = (m.tipo === "facturacion" || m.tipo === "anticipo") ? "ingreso" : "gasto";
+let abierto=key===actual;
 
-      if (editIndex === i) {
-        lista += `
-          <div class="hist">
-            <div class="hist-left">
-              <input id="editImporte" value="${m.importe || m.total || ""}">
-              <input id="editConcepto" value="${m.concepto || ""}">
-              ${m.tipo === "facturacion" ? `<input id="editEfectivo" value="${m.efectivo || 0}">` : ""}
-            </div>
-            <div class="hist-right">
-              <button onclick="saveEdit(${i})">✔</button>
-              <button onclick="cancelEdit()">✖</button>
-            </div>
-          </div>
-        `;
-      } else {
-        lista += `
-          <div class="hist">
-            <div class="hist-left">
-              <div class="${clase}"><b>${m.tipo}</b></div>
-              <div class="small">${m.concepto || ""}</div>
-            </div>
-            <div class="hist-right">
-              <div>${m.total || m.importe}€</div>
-              <button onclick="edit(${i})">✏</button>
-              <button onclick="del(${i})">🗑</button>
-            </div>
-          </div>
-        `;
-      }
-    });
+lista+=`
+<div class="card">
+<h3 onclick="toggleMes('${key}')">${key} ${abierto?"▼":"▶"}</h3>
+<div id="mes-${key}" style="display:${abierto?"block":"none"};">
+`;
 
-    lista += `</div></div>`;
-  }
+grupos[key].forEach(obj=>{
+let m=obj.m, i=obj.i;
 
-  app.innerHTML = `
-    <h2>Geo Finanzas</h2>
+let clase=(m.tipo==="facturacion"||m.tipo==="anticipo")?"ingreso":"gasto";
 
-    ${flashMsg ? `<div class="flash">${flashMsg}</div>` : ""}
+if(editIndex===i){
 
-    <div class="card">
-      <h3>${r.s.toFixed(2)}€</h3>
-      <p>Vaquita: ${r.v.toFixed(2)}</p>
-      <p>Combustible: ${r.fc.toFixed(2)}</p>
-      <p>Facturas: ${r.ff.toFixed(2)}</p>
-    </div>
+lista+=`
+<div class="hist">
+<div>
+<input id="editFecha" type="date" value="${new Date(m.fecha).toISOString().split('T')[0]}">
+<input id="editImporte" value="${m.importe||m.total}">
+<input id="editConcepto" value="${m.concepto||""}">
+${m.tipo==="facturacion"?`<input id="editEfectivo" value="${m.efectivo}">`:""}
+</div>
+<div>
+<button onclick="saveEdit(${i})">✔</button>
+<button onclick="cancelEdit()">✖</button>
+</div>
+</div>`;
 
-    <div class="card">
-      <p>Facturación: ${r.fact.toFixed(2)}</p>
-      <p>% aplicado: ${r.porcentaje * 100}%</p>
-      <p>Anticipos: ${r.anticipo.toFixed(2)}</p>
-      <p class="kpi">Cobro real: ${r.cobroReal.toFixed(2)}€</p>
-    </div>
+}else{
 
-    <div class="card">
-      <h3>IA</h3>
-      <p><b>Estado del mes:</b> ${r.estadoMes}</p>
-      <p><b>Gasto máximo hoy:</b> ${r.gastoMaximoDiario.toFixed(2)}€</p>
-      <p><b>Proyección fin de mes:</b> ${r.saldoPrevistoFinMes.toFixed(2)}€</p>
-      <p><b>Fuga principal:</b> ${r.topConcepto || "-"} (${(r.topValor || 0).toFixed(2)}€)</p>
-      <p><b>Ahorro posible (-20%):</b> ${r.ahorroPotencial.toFixed(2)}€</p>
-      <p><b>Control combustible:</b> ${r.controlCombustible}</p>
-      <p class="small">Días hasta fin de mes: ${r.diasFinMes}</p>
-      <p class="small">Autonomía estimada: ${r.autonomiaDias.toFixed(1)} días</p>
-      <p class="small">Gasto medio operativo: ${r.gastoMedioOperativo.toFixed(2)}€</p>
-    </div>
+lista+=`
+<div class="hist">
+<div class="hist-left">
+<div class="${clase}"><b>${m.tipo}</b></div>
+<div class="small">${m.concepto||""}</div>
+<div class="small">${new Date(m.fecha).toLocaleDateString()}</div>
+</div>
+<div class="hist-right">
+<div>${m.total||m.importe}€</div>
+<button onclick="edit(${i})">✏</button>
+<button onclick="del(${i})">🗑</button>
+</div>
+</div>`;
+}
 
-    <div class="card">
-      <div class="row">
-        <button onclick="setModo('facturacion')">Ingreso</button>
-        <button onclick="setModo('gasto')">Gasto</button>
-        <button onclick="setModo('anticipo')">Anticipo</button>
-      </div>
+});
 
-      <div id="form"></div>
-      <button onclick="guardar()">Guardar</button>
-    </div>
+lista+=`</div></div>`;
+}
 
-    <div class="card">
-      <h3>Stats</h3>
-      ${statsHTML || "<p>No hay datos</p>"}
-    </div>
+/* STATS */
 
-    <div class="card">
-      <h3>Historial</h3>
-      ${lista || "<p>No hay movimientos</p>"}
-    </div>
-  `;
+let statsHTML="";
+for(let k in r.stats){
+statsHTML+=`<p>${k}: ${r.stats[k].toFixed(2)}€</p>`;
+}
 
-  renderForm();
-  flashMsg = "";
+app.innerHTML=`
+
+<h2>Geo Finanzas</h2>
+
+<div class="card">
+<h3>${r.s.toFixed(2)}€</h3>
+<p>Vaquita: ${r.v.toFixed(2)}</p>
+<p>Combustible: ${r.fc.toFixed(2)}</p>
+<p>Facturas: ${r.ff.toFixed(2)}</p>
+</div>
+
+<div class="card">
+<p>Facturación: ${r.fact.toFixed(2)}</p>
+<p>%: ${r.porcentaje*100}</p>
+<p><b>Cobro real: ${r.cobroReal.toFixed(2)}€</b></p>
+</div>
+
+<div class="card">
+<h3>IA</h3>
+<p>Estado: ${r.estado}</p>
+<p>Gasto máximo hoy: ${r.gastoMaximo.toFixed(2)}€</p>
+<p>Proyección fin de mes: ${r.saldoPrevisto.toFixed(2)}€</p>
+<p>Fuga: ${r.topConcepto} (${(r.topValor||0).toFixed(2)}€)</p>
+<p>Ahorro posible: ${r.ahorro.toFixed(2)}€</p>
+<p>Combustible: ${r.controlComb}</p>
+</div>
+
+<div class="card">
+<div class="row">
+<button onclick="setModo('facturacion')">Ingreso</button>
+<button onclick="setModo('gasto')">Gasto</button>
+<button onclick="setModo('anticipo')">Anticipo</button>
+</div>
+
+<div id="form"></div>
+<button onclick="guardar()">Guardar</button>
+</div>
+
+<div class="card">
+<h3>Stats</h3>
+${statsHTML}
+</div>
+
+<div class="card">
+<h3>Historial</h3>
+${lista}
+</div>
+`;
+
+renderForm();
 }
 
 /* FORM */
 
-function setModo(m) {
-  modo = m;
-  renderForm();
+function setModo(m){ modo=m; renderForm(); }
+
+function renderForm(){
+
+let html="";
+
+if(modo==="facturacion"){
+html=`
+<input id="fecha" type="date">
+<input id="total" placeholder="Total día">
+<input id="efectivo" placeholder="Efectivo">
+`;
 }
 
-function renderForm() {
-  let html = "";
+if(modo==="anticipo"){
+html=`
+<input id="fecha" type="date">
+<input id="importe" placeholder="Importe">
+`;
+}
 
-  if (modo === "facturacion") {
-    html = `
-      <input id="total" placeholder="Total día">
-      <input id="efectivo" placeholder="Efectivo">
-    `;
-  }
+if(modo==="gasto"){
+html=`
+<input id="fecha" type="date">
+<select id="concepto" onchange="autofill()">
+${data.conceptos.map(c=>`<option>${c}</option>`).join("")}
+<option value="toComb">→ Fondo Comb</option>
+<option value="toFact">→ Fondo Fact</option>
+<option value="combustible_directo">combustible</option>
+</select>
+<input id="nuevoConcepto" placeholder="Nuevo concepto">
+<input id="importe" placeholder="Importe">
+`;
+}
 
-  if (modo === "anticipo") {
-    html = `<input id="importe" placeholder="Importe">`;
-  }
+document.getElementById("form").innerHTML=html;
 
-  if (modo === "gasto") {
-    html = `
-      <select id="concepto" onchange="autofill()">
-        ${data.conceptos.map(c => `<option>${c}</option>`).join("")}
-        <option value="toComb">→ Fondo Comb</option>
-        <option value="toFact">→ Fondo Fact</option>
-        <option value="combustible_directo">combustible</option>
-      </select>
-      <input id="nuevoConcepto" placeholder="Nuevo concepto">
-      <input id="importe" placeholder="Importe">
-    `;
-  }
-
-  document.getElementById("form").innerHTML = html;
+if(document.getElementById("fecha")){
+document.getElementById("fecha").value=hoy();
+}
 }
 
 /* AUTOFILL */
 
-function autofill() {
-  const c = val("concepto");
-  if (data.precios[c]) {
-    document.getElementById("importe").value = data.precios[c];
-  }
+function autofill(){
+let c=val("concepto");
+if(data.precios[c]){
+document.getElementById("importe").value=data.precios[c];
+}
 }
 
 /* GUARDAR */
 
-function guardar() {
-  if (modo === "facturacion") {
-    data.movimientos.push({
-      tipo: "facturacion",
-      total: +val("total"),
-      efectivo: +val("efectivo"),
-      fecha: Date.now()
-    });
-    flashMsg = "Ingreso guardado";
-  }
+function guardar(){
 
-  if (modo === "anticipo") {
-    data.movimientos.push({
-      tipo: "anticipo",
-      importe: +val("importe"),
-      fecha: Date.now()
-    });
-    flashMsg = "Anticipo guardado";
-  }
+let fecha=new Date(val("fecha")||Date.now()).getTime();
 
-  if (modo === "gasto") {
-    const concepto = val("nuevoConcepto") || val("concepto");
-    const importe = +val("importe");
+if(modo==="facturacion"){
+data.movimientos.push({
+tipo:"facturacion",
+total:+val("total"),
+efectivo:+val("efectivo"),
+fecha
+});
+}
 
-    if (concepto === "toComb") {
-      data.movimientos.push({ tipo: "toComb", importe, fecha: Date.now() });
-      flashMsg = "Vaquita → Fondo combustible";
-    } else if (concepto === "toFact") {
-      data.movimientos.push({ tipo: "toFact", importe, fecha: Date.now() });
-      flashMsg = "Vaquita → Fondo facturas";
-    } else if (concepto === "combustible_directo") {
-      data.movimientos.push({ tipo: "comb", importe, fecha: Date.now() });
-      flashMsg = "Combustible guardado";
-    } else {
-      if (!data.conceptos.includes(concepto)) {
-        data.conceptos.push(concepto);
-      }
-      data.precios[concepto] = importe;
+if(modo==="anticipo"){
+data.movimientos.push({
+tipo:"anticipo",
+importe:+val("importe"),
+fecha
+});
+}
 
-      data.movimientos.push({
-        tipo: "gasto",
-        importe,
-        concepto,
-        fecha: Date.now()
-      });
-      flashMsg = "Gasto guardado";
-    }
-  }
+if(modo==="gasto"){
 
-  save();
-  main();
+let concepto=val("nuevoConcepto")||val("concepto");
+let importe=+val("importe");
+
+if(concepto==="toComb"){
+data.movimientos.push({tipo:"toComb",importe,fecha});
+}
+else if(concepto==="toFact"){
+data.movimientos.push({tipo:"toFact",importe,fecha});
+}
+else if(concepto==="combustible_directo"){
+data.movimientos.push({tipo:"comb",importe,fecha});
+}
+else{
+if(!data.conceptos.includes(concepto)){
+data.conceptos.push(concepto);
+}
+data.precios[concepto]=importe;
+
+data.movimientos.push({
+tipo:"gasto",
+importe,
+concepto,
+fecha
+});
+}
+}
+
+save();
+main();
 }
 
 /* EDITAR */
 
-function edit(i) {
-  editIndex = i;
-  main();
+function edit(i){ editIndex=i; main(); }
+
+function saveEdit(i){
+let m=data.movimientos[i];
+
+m.fecha=new Date(document.getElementById("editFecha").value).getTime();
+
+if(m.tipo==="facturacion"){
+m.total=+document.getElementById("editImporte").value;
+m.efectivo=+document.getElementById("editEfectivo").value;
+}else{
+m.importe=+document.getElementById("editImporte").value;
+m.concepto=document.getElementById("editConcepto").value;
 }
 
-function saveEdit(i) {
-  const m = data.movimientos[i];
-
-  if (m.tipo === "facturacion") {
-    m.total = +document.getElementById("editImporte").value;
-    m.efectivo = +document.getElementById("editEfectivo").value;
-  } else {
-    m.importe = +document.getElementById("editImporte").value;
-    m.concepto = document.getElementById("editConcepto").value || m.concepto;
-  }
-
-  editIndex = null;
-  save();
-  main();
+editIndex=null;
+save();
+main();
 }
 
-function cancelEdit() {
-  editIndex = null;
-  main();
-}
+function cancelEdit(){ editIndex=null; main(); }
 
 /* ACCORDION */
 
-function toggleMes(key) {
-  const el = document.getElementById("mes-" + key);
-  el.style.display = el.style.display === "none" ? "block" : "none";
+function toggleMes(key){
+let el=document.getElementById("mes-"+key);
+el.style.display=el.style.display==="none"?"block":"none";
 }
 
 /* HELPERS */
 
-function val(id) {
-  return document.getElementById(id)?.value || "";
-}
-
-function del(i) {
-  data.movimientos.splice(i, 1);
-  save();
-  main();
-}
+function val(id){ return document.getElementById(id)?.value||""; }
+function del(i){ data.movimientos.splice(i,1); save(); main(); }
 
 init();
+
 </script>
 </body>
 </html>
