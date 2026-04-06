@@ -98,10 +98,10 @@ let s=data.config.saldo;
 let v=data.config.vaquita;
 let fc=data.config.fc;
 let ff=data.config.ff;
-let fact=data.config.factMes;
+let fact=0;
 let efectivo=0;
 let tarjeta=0;
-let comb=data.config.combMes;
+let comb=0;
 let anticipo=0;
 
 let totalGastos=0;
@@ -110,9 +110,14 @@ let stats={};
 
 const gastosFijos=["alquiler","facturas","seguro","luz","internet","orange","cole"];
 
+const mesActual = getMonthKey(Date.now());
+
 data.movimientos.forEach(m=>{
 
-if(m.tipo==="facturacion"){
+const mesMovimiento = getMonthKey(m.fecha || Date.now());
+const esMesActual = mesMovimiento === mesActual;
+
+if(m.tipo==="facturacion" && esMesActual){
 fact+=m.total;
 efectivo+=m.efectivo;
 tarjeta+=(m.total-m.efectivo);
@@ -138,7 +143,7 @@ totalOperativo+=m.importe;
 }
 }
 
-if(m.tipo==="comb"){
+if(m.tipo==="comb" && esMesActual){
 if(fc>=m.importe) fc-=m.importe;
 else{
 let r=m.importe-fc;
