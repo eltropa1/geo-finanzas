@@ -35,7 +35,8 @@ let data = {
 config:null,
 movimientos:[],
 conceptos:["cafe","tabaco","comida","cole","alquiler","transporte","orange","luz","internet","seguro","vaquita"],
-precios:{ cafe:1.5, tabaco:6.7 }
+precios:{ cafe:1.5, tabaco:6.7 },
+cerrados:{}
 };
 
 let modo="facturacion";
@@ -43,8 +44,29 @@ let editIndex=null;
 let flashMsg="";
 let mesVisualizado=hoy().slice(0,7);
 
-function save(){ localStorage.setItem("geoData", JSON.stringify(data)); }
-function load(){ let d=localStorage.getItem("geoData"); if(d) data=JSON.parse(d); }
+function normalizarData(){
+if(!data.config) data.config=null;
+if(!Array.isArray(data.movimientos)) data.movimientos=[];
+if(!Array.isArray(data.conceptos)) data.conceptos=["cafe","tabaco","comida","cole","alquiler","transporte","orange","luz","internet","seguro","vaquita"];
+if(!data.precios) data.precios={ cafe:1.5, tabaco:6.7 };
+if(!data.cerrados) data.cerrados={};
+data.movimientos.forEach(m=>{
+if(!("comentario" in m)) m.comentario="";
+});
+}
+
+function save(){
+try{
+localStorage.setItem("geoData", JSON.stringify(data));
+}catch(e){
+alert("Error guardando datos");
+}
+}
+function load(){
+let d=localStorage.getItem("geoData");
+if(d) data=JSON.parse(d);
+normalizarData();
+}
 
 function hoy(){
 const d=new Date();
@@ -124,6 +146,16 @@ return String(v||"")
 .replaceAll('"',"&quot;");
 }
 
+function mesCerrado(key){
+return !!(data.cerrados && data.cerrados[key]);
+}
+
+function nombreMes(key){
+const parts=key.split("-");
+const d=new Date(+parts[0], +parts[1]-1, 1);
+return d.toLocaleDateString("es-ES",{month:"long",year:"numeric"});
+}
+
 /* CALCULO */
 
 function calc(){
@@ -137,9 +169,11 @@ let efectivo=0;
 let tarjeta=0;
 let comb=0;
 let anticipo=0;
+let ingresoExtra=0;
 
 let totalGastos=0;
 let totalOperativo=0;
+let gastosRealesMes=0;
 let stats={};
 
 const gastosFijos=["alquiler","facturas","seguro","luz","internet","orange","cole"];
@@ -167,6 +201,9 @@ anticipo+=m.importe;
 
 if(m.tipo==="ingreso_extra"){
 s+=m.importe;
+if(esMesVisualizado){
+ingresoExtra+=m.importe;
+}
 }
 
 if(m.tipo==="gasto"){
@@ -176,6 +213,9 @@ totalGastos+=m.importe;
 
 if(!stats[m.concepto]) stats[m.concepto]=0;
 stats[m.concepto]+=m.importe;
+if(m.concepto!=="vaquita"){
+gastosRealesMes+=m.importe;
+}
 }
 
 if(m.concepto==="vaquita") v+=m.importe;
@@ -197,6 +237,7 @@ s-=r;
 if(esMesVisualizado){
 comb+=m.importe;
 totalGastos+=m.importe;
+gastosRealesMes+=m.importe;
 stats["combustible"]=(stats["combustible"]||0)+m.importe;
 totalOperativo+=m.importe;
 }
@@ -212,6 +253,8 @@ if(m.tipo==="toFact"){ v-=m.importe; ff+=m.importe; }
 let porcentaje=fact<5000?0.45:0.5;
 let tuTotal=fact*porcentaje;
 let cobroReal=tuTotal-efectivo-anticipo;
+let ingresosRealesMes=efectivo+anticipo+cobroReal+ingresoExtra;
+let balanceMensual=ingresosRealesMes-gastosRealesMes;
 
 /* IA */
 
@@ -239,7 +282,7 @@ if((stats["combustible"]||0)>300) controlComb="Combustible alto";
 return {
 s,v,fc,ff,fact,efectivo,tarjeta,tuTotal,cobroReal,porcentaje,
 estado,gastoMaximo,saldoPrevisto,topConcepto,topValor,ahorro,controlComb,
-stats
+stats,totalGastos,comb,balanceMensual,movimientosMes:movimientosMes.length
 };
 }
 
@@ -264,10 +307,11 @@ let lista="";
 Object.keys(grupos).sort().reverse().forEach(key=>{
 
 let abierto=key===mesVisualizado;
+let cerrado=mesCerrado(key);
 
 lista+=`
 <div class="card">
-<h3 onclick="toggleMes('${key}')">${key} ${abierto?"▼":"▶"}</h3>
+<h3 onclick="toggleMes('${key}')">${key} ${cerrado?"🔒":""} ${abierto?"▼":"▶"}</h3>
 <div id="mes-${key}" style="display:${abierto?"block":"none"};">
 `;
 
@@ -305,8 +349,10 @@ lista+=`
 </div>
 <div class="hist-right">
 <div>${m.total||m.importe}€</div>
+${cerrado?`<div class="small">Mes cerrado</div>`:`
 <button onclick="edit(${i})">✏</button>
 <button onclick="del(${i})">🗑</button>
+`}
 </div>
 </div>`;
 }
@@ -323,10 +369,14 @@ for(let k in r.stats){
 statsHTML+=`<p>${k}: ${r.stats[k].toFixed(2)}€</p>`;
 }
 
+let cerradoActual=mesCerrado(mesVisualizado);
+let cierreTexto=cerradoActual?"Abrir mes":"Cerrar mes";
+let balanceClase=r.balanceMensual>=0?"ingreso":"gasto";
+
 app.innerHTML=`
 
 <h2>Geo Finanzas</h2>
-<div class="small">Mes visualizado: ${mesVisualizado}</div>
+<div class="small">Mes visualizado: ${mesVisualizado} ${cerradoActual?"🔒":""}</div>
 
 <div class="card">
 <h3>${r.s.toFixed(2)}€</h3>
@@ -339,6 +389,19 @@ app.innerHTML=`
 <p>Facturación: ${r.fact.toFixed(2)}</p>
 <p>%: ${r.porcentaje*100}</p>
 <p><b>Cobro real: ${r.cobroReal.toFixed(2)}€</b></p>
+</div>
+
+<div class="card">
+<h3>Resumen mensual</h3>
+<p>${nombreMes(mesVisualizado)}</p>
+<p>Facturación: ${r.fact.toFixed(2)}€</p>
+<p>Cobro real: ${r.cobroReal.toFixed(2)}€</p>
+<p>Gastos: ${r.totalGastos.toFixed(2)}€</p>
+<p>Combustible: ${r.comb.toFixed(2)}€</p>
+<p>Balance: <span class="${balanceClase}">${r.balanceMensual>=0?"+":""}${r.balanceMensual.toFixed(2)}€</span></p>
+<p>Mayor fuga: ${r.topConcepto||"-"}</p>
+<p>Movimientos: ${r.movimientosMes}</p>
+<button onclick="toggleCierreMes()">${cierreTexto}</button>
 </div>
 
 <div class="card">
@@ -371,6 +434,15 @@ ${statsHTML}
 <div class="card">
 <h3>Historial</h3>
 ${lista}
+</div>
+
+<div class="card">
+<h3>Backup</h3>
+<div class="row">
+<button onclick="exportarBackup()">Exportar Backup</button>
+<button onclick="document.getElementById('backupFile').click()">Importar Backup</button>
+</div>
+<input id="backupFile" type="file" accept="application/json,.json" style="display:none" onchange="importarBackup(event)">
 </div>
 `;
 
@@ -446,6 +518,10 @@ document.getElementById("importe").value=data.precios[c];
 function guardar(){
 
 let fecha=parseFechaInput(val("fecha")||hoy());
+if(mesCerrado(getMonthKey(fecha))){
+alert("Este mes está cerrado");
+return;
+}
 let comentario=val("comentario");
 
 if(modo==="facturacion"){
@@ -513,12 +589,29 @@ main();
 
 /* EDITAR */
 
-function edit(i){ editIndex=i; main(); }
+function edit(i){
+let m=data.movimientos[i];
+if(mesCerrado(getMonthKey(m.fecha||Date.now()))){
+alert("Este mes está cerrado");
+return;
+}
+editIndex=i; main();
+}
 
 function saveEdit(i){
 let m=data.movimientos[i];
+if(mesCerrado(getMonthKey(m.fecha||Date.now()))){
+alert("Este mes está cerrado");
+editIndex=null;
+main();
+return;
+}
 
 m.fecha=parseFechaInput(document.getElementById("editFecha").value||hoy());
+if(mesCerrado(getMonthKey(m.fecha))){
+alert("Este mes está cerrado");
+return;
+}
 m.concepto=document.getElementById("editConcepto").value;
 m.comentario=document.getElementById("editComentario").value;
 
@@ -544,10 +637,67 @@ mesVisualizado=key;
 main();
 }
 
+function toggleCierreMes(){
+data.cerrados[mesVisualizado]=!mesCerrado(mesVisualizado);
+editIndex=null;
+save();
+main();
+}
+
+function exportarBackup(){
+normalizarData();
+const blob=new Blob([JSON.stringify(data,null,2)],{type:"application/json"});
+const url=URL.createObjectURL(blob);
+const a=document.createElement("a");
+a.href=url;
+a.download="geo-finanzas-backup-"+hoy()+".json";
+document.body.appendChild(a);
+a.click();
+document.body.removeChild(a);
+URL.revokeObjectURL(url);
+}
+
+function importarBackup(event){
+const file=event.target.files[0];
+if(!file) return;
+const reader=new FileReader();
+reader.onload=function(){
+try{
+const nuevo=JSON.parse(reader.result);
+if(!nuevo || !("config" in nuevo) || !Array.isArray(nuevo.movimientos)){
+alert("JSON inválido");
+return;
+}
+data=nuevo;
+normalizarData();
+save();
+mesVisualizado=hoy().slice(0,7);
+editIndex=null;
+main();
+}catch(e){
+alert("JSON inválido");
+}finally{
+event.target.value="";
+}
+};
+reader.onerror=function(){
+alert("JSON inválido");
+event.target.value="";
+};
+reader.readAsText(file);
+}
+
 /* HELPERS */
 
 function val(id){ return document.getElementById(id)?.value||""; }
-function del(i){ data.movimientos.splice(i,1); save(); main(); }
+function del(i){
+let m=data.movimientos[i];
+if(mesCerrado(getMonthKey(m.fecha||Date.now()))){
+alert("Este mes está cerrado");
+return;
+}
+data.movimientos.splice(i,1); save(); main();
+}
 
 init();
 
