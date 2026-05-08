@@ -41,12 +41,14 @@ precios:{ cafe:1.5, tabaco:6.7 }
 let modo="facturacion";
 let editIndex=null;
 let flashMsg="";
+let mesVisualizado=hoy().slice(0,7);
 
 function save(){ localStorage.setItem("geoData", JSON.stringify(data)); }
 function load(){ let d=localStorage.getItem("geoData"); if(d) data=JSON.parse(d); }
 
 function hoy(){
-return new Date().toISOString().split("T")[0];
+const d=new Date();
+return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
 }
 
 function init(){ load(); if(!data.config) config(); else main(); }
@@ -84,10 +86,42 @@ const d = new Date(fecha);
 return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0");
 }
 
-function getDaysUntilEndOfMonth(){
+function parseFechaInput(fecha){
+return new Date(fecha+"T00:00:00").getTime();
+}
+
+function formatFecha(fecha){
+const d=new Date(fecha||Date.now());
+if(isNaN(d.getTime())) return hoy();
+return d.getFullYear()+"-"+String(d.getMonth()+1).padStart(2,"0")+"-"+String(d.getDate()).padStart(2,"0");
+}
+
+function getDaysUntilEndOfMonth(monthKey){
+const parts=monthKey.split("-");
+const year=+parts[0];
+const month=+parts[1]-1;
 const now=new Date();
-const last=new Date(now.getFullYear(), now.getMonth()+1,0).getDate();
-return last-now.getDate();
+const last=new Date(year, month+1,0).getDate();
+if(getMonthKey(Date.now())===monthKey) return Math.max(0,last-now.getDate());
+return last;
+}
+
+function getMovimientosOrdenados(){
+return data.movimientos
+.map((m,i)=>({m,i}))
+.sort((a,b)=>(b.m.fecha||0)-(a.m.fecha||0));
+}
+
+function getMovimientosCronologicos(){
+return [...data.movimientos].sort((a,b)=>(a.fecha||0)-(b.fecha||0));
+}
+
+function esc(v){
+return String(v||"")
+.replaceAll("&","&amp;")
+.replaceAll("<","&lt;")
+.replaceAll(">","&gt;")
+.replaceAll('"',"&quot;");
 }
 
 /* CALCULO */
@@ -110,50 +144,62 @@ let stats={};
 
 const gastosFijos=["alquiler","facturas","seguro","luz","internet","orange","cole"];
 
-const mesActual = getMonthKey(Date.now());
-
-data.movimientos.forEach(m=>{
+getMovimientosCronologicos().forEach(m=>{
 
 const mesMovimiento = getMonthKey(m.fecha || Date.now());
-const esMesActual = mesMovimiento === mesActual;
+const esMesVisualizado = mesMovimiento === mesVisualizado;
 
-if(m.tipo==="facturacion" && esMesActual){
+if(m.tipo==="facturacion"){
+s+=m.efectivo||0;
+if(esMesVisualizado){
 fact+=m.total;
 efectivo+=m.efectivo;
 tarjeta+=(m.total-m.efectivo);
-s+=m.efectivo;
+}
 }
 
 if(m.tipo==="anticipo"){
 s+=m.importe;
+if(esMesVisualizado){
 anticipo+=m.importe;
+}
+}
+
+if(m.tipo==="ingreso_extra"){
+s+=m.importe;
 }
 
 if(m.tipo==="gasto"){
 s-=m.importe;
+if(esMesVisualizado){
 totalGastos+=m.importe;
 
 if(!stats[m.concepto]) stats[m.concepto]=0;
 stats[m.concepto]+=m.importe;
+}
 
 if(m.concepto==="vaquita") v+=m.importe;
 
+if(esMesVisualizado){
 if(!gastosFijos.includes(m.concepto)){
 totalOperativo+=m.importe;
 }
 }
+}
 
-if(m.tipo==="comb" && esMesActual){
+if(m.tipo==="comb"){
 if(fc>=m.importe) fc-=m.importe;
 else{
 let r=m.importe-fc;
 fc=0;
 s-=r;
 }
+if(esMesVisualizado){
 comb+=m.importe;
 totalGastos+=m.importe;
 stats["combustible"]=(stats["combustible"]||0)+m.importe;
 totalOperativo+=m.importe;
+}
 }
 
 if(m.tipo==="toComb"){ v-=m.importe; fc+=m.importe; }
@@ -169,8 +215,9 @@ let cobroReal=tuTotal-efectivo-anticipo;
 
 /* IA */
 
-let diasFinMes=getDaysUntilEndOfMonth();
-let gastoMedioOperativo=totalOperativo/Math.max(1,data.movimientos.length);
+let movimientosMes=data.movimientos.filter(m=>getMonthKey(m.fecha || Date.now())===mesVisualizado);
+let diasFinMes=getDaysUntilEndOfMonth(mesVisualizado);
+let gastoMedioOperativo=totalOperativo/Math.max(1,movimientosMes.length);
 
 let saldoPrevisto=s-(gastoMedioOperativo*diasFinMes);
 let gastoMaximo=diasFinMes>0?s/diasFinMes:s;
@@ -205,19 +252,18 @@ let r=calc();
 /* HISTORIAL */
 
 let grupos={};
-data.movimientos.forEach((m,i)=>{
+getMovimientosOrdenados().forEach(obj=>{
+let m=obj.m, i=obj.i;
 let key=getMonthKey(m.fecha||Date.now());
 if(!grupos[key]) grupos[key]=[];
 grupos[key].push({m,i});
 });
 
-let actual=getMonthKey(Date.now());
-
 let lista="";
 
-for(let key in grupos){
+Object.keys(grupos).sort().reverse().forEach(key=>{
 
-let abierto=key===actual;
+let abierto=key===mesVisualizado;
 
 lista+=`
 <div class="card">
@@ -228,16 +274,17 @@ lista+=`
 grupos[key].forEach(obj=>{
 let m=obj.m, i=obj.i;
 
-let clase=(m.tipo==="facturacion"||m.tipo==="anticipo")?"ingreso":"gasto";
+let clase=(m.tipo==="facturacion"||m.tipo==="anticipo"||m.tipo==="ingreso_extra")?"ingreso":"gasto";
 
 if(editIndex===i){
 
 lista+=`
 <div class="hist">
 <div>
-<input id="editFecha" type="date" value="${new Date(m.fecha).toISOString().split('T')[0]}">
+<input id="editFecha" type="date" value="${formatFecha(m.fecha)}">
 <input id="editImporte" value="${m.importe||m.total}">
-<input id="editConcepto" value="${m.concepto||""}">
+<input id="editConcepto" value="${esc(m.concepto||"")}">
+<input id="editComentario" value="${esc(m.comentario||"")}" placeholder="Comentario">
 ${m.tipo==="facturacion"?`<input id="editEfectivo" value="${m.efectivo}">`:""}
 </div>
 <div>
@@ -252,8 +299,9 @@ lista+=`
 <div class="hist">
 <div class="hist-left">
 <div class="${clase}"><b>${m.tipo}</b></div>
-<div class="small">${m.concepto||""}</div>
-<div class="small">${new Date(m.fecha).toLocaleDateString()}</div>
+<div class="small">${esc(m.concepto||"")}</div>
+<div class="small">${esc(m.comentario||"")}</div>
+<div class="small">${new Date(m.fecha||Date.now()).toLocaleDateString()}</div>
 </div>
 <div class="hist-right">
 <div>${m.total||m.importe}€</div>
@@ -266,7 +314,7 @@ lista+=`
 });
 
 lista+=`</div></div>`;
-}
+});
 
 /* STATS */
 
@@ -278,6 +326,7 @@ statsHTML+=`<p>${k}: ${r.stats[k].toFixed(2)}€</p>`;
 app.innerHTML=`
 
 <h2>Geo Finanzas</h2>
+<div class="small">Mes visualizado: ${mesVisualizado}</div>
 
 <div class="card">
 <h3>${r.s.toFixed(2)}€</h3>
@@ -307,6 +356,7 @@ app.innerHTML=`
 <button onclick="setModo('facturacion')">Ingreso</button>
 <button onclick="setModo('gasto')">Gasto</button>
 <button onclick="setModo('anticipo')">Anticipo</button>
+<button onclick="setModo('ingreso_extra')">Ingreso Extra</button>
 </div>
 
 <div id="form"></div>
@@ -340,6 +390,7 @@ html=`
 <input id="fecha" type="date">
 <input id="total" placeholder="Total día">
 <input id="efectivo" placeholder="Efectivo">
+<input id="comentario" placeholder="Comentario">
 `;
 }
 
@@ -347,6 +398,15 @@ if(modo==="anticipo"){
 html=`
 <input id="fecha" type="date">
 <input id="importe" placeholder="Importe">
+<input id="comentario" placeholder="Comentario">
+`;
+}
+
+if(modo==="ingreso_extra"){
+html=`
+<input id="fecha" type="date">
+<input id="importe" placeholder="Importe">
+<input id="comentario" placeholder="Comentario">
 `;
 }
 
@@ -361,6 +421,7 @@ ${data.conceptos.map(c=>`<option>${c}</option>`).join("")}
 </select>
 <input id="nuevoConcepto" placeholder="Nuevo concepto">
 <input id="importe" placeholder="Importe">
+<input id="comentario" placeholder="Comentario">
 `;
 }
 
@@ -384,14 +445,16 @@ document.getElementById("importe").value=data.precios[c];
 
 function guardar(){
 
-let fecha=new Date(val("fecha")||Date.now()).getTime();
+let fecha=parseFechaInput(val("fecha")||hoy());
+let comentario=val("comentario");
 
 if(modo==="facturacion"){
 data.movimientos.push({
 tipo:"facturacion",
 total:+val("total"),
 efectivo:+val("efectivo"),
-fecha
+fecha,
+comentario
 });
 }
 
@@ -399,7 +462,17 @@ if(modo==="anticipo"){
 data.movimientos.push({
 tipo:"anticipo",
 importe:+val("importe"),
-fecha
+fecha,
+comentario
+});
+}
+
+if(modo==="ingreso_extra"){
+data.movimientos.push({
+tipo:"ingreso_extra",
+importe:+val("importe"),
+fecha,
+comentario
 });
 }
 
@@ -409,13 +482,13 @@ let concepto=val("nuevoConcepto")||val("concepto");
 let importe=+val("importe");
 
 if(concepto==="toComb"){
-data.movimientos.push({tipo:"toComb",importe,fecha});
+data.movimientos.push({tipo:"toComb",importe,fecha,comentario});
 }
 else if(concepto==="toFact"){
-data.movimientos.push({tipo:"toFact",importe,fecha});
+data.movimientos.push({tipo:"toFact",importe,fecha,comentario});
 }
 else if(concepto==="combustible_directo"){
-data.movimientos.push({tipo:"comb",importe,fecha});
+data.movimientos.push({tipo:"comb",importe,fecha,comentario});
 }
 else{
 if(!data.conceptos.includes(concepto)){
@@ -427,11 +500,13 @@ data.movimientos.push({
 tipo:"gasto",
 importe,
 concepto,
-fecha
+fecha,
+comentario
 });
 }
 }
 
+mesVisualizado=getMonthKey(fecha);
 save();
 main();
 }
@@ -443,17 +518,19 @@ function edit(i){ editIndex=i; main(); }
 function saveEdit(i){
 let m=data.movimientos[i];
 
-m.fecha=new Date(document.getElementById("editFecha").value).getTime();
+m.fecha=parseFechaInput(document.getElementById("editFecha").value||hoy());
+m.concepto=document.getElementById("editConcepto").value;
+m.comentario=document.getElementById("editComentario").value;
 
 if(m.tipo==="facturacion"){
 m.total=+document.getElementById("editImporte").value;
 m.efectivo=+document.getElementById("editEfectivo").value;
 }else{
 m.importe=+document.getElementById("editImporte").value;
-m.concepto=document.getElementById("editConcepto").value;
 }
 
 editIndex=null;
+mesVisualizado=getMonthKey(m.fecha);
 save();
 main();
 }
@@ -463,8 +540,8 @@ function cancelEdit(){ editIndex=null; main(); }
 /* ACCORDION */
 
 function toggleMes(key){
-let el=document.getElementById("mes-"+key);
-el.style.display=el.style.display==="none"?"block":"none";
+mesVisualizado=key;
+main();
 }
 
 /* HELPERS */
