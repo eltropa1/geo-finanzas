@@ -36,11 +36,13 @@ config:null,
 movimientos:[],
 conceptos:["cafe","tabaco","comida","cole","alquiler","transporte","orange","luz","internet","seguro","vaquita"],
 precios:{ cafe:1.5, tabaco:6.7 },
-cerrados:{}
+cerrados:{},
+snapshot:{ gastos:[], ingresos:[] }
 };
 
 let modo="facturacion";
 let editIndex=null;
+let editSnapshot=null;
 let flashMsg="";
 let mesVisualizado=hoy().slice(0,7);
 
@@ -50,6 +52,9 @@ if(!Array.isArray(data.movimientos)) data.movimientos=[];
 if(!Array.isArray(data.conceptos)) data.conceptos=["cafe","tabaco","comida","cole","alquiler","transporte","orange","luz","internet","seguro","vaquita"];
 if(!data.precios) data.precios={ cafe:1.5, tabaco:6.7 };
 if(!data.cerrados) data.cerrados={};
+if(!data.snapshot) data.snapshot={ gastos:[], ingresos:[] };
+if(!Array.isArray(data.snapshot.gastos)) data.snapshot.gastos=[];
+if(!Array.isArray(data.snapshot.ingresos)) data.snapshot.ingresos=[];
 data.movimientos.forEach(m=>{
 if(!("comentario" in m)) m.comentario="";
 });
@@ -372,6 +377,7 @@ statsHTML+=`<p>${k}: ${r.stats[k].toFixed(2)}€</p>`;
 let cerradoActual=mesCerrado(mesVisualizado);
 let cierreTexto=cerradoActual?"Abrir mes":"Cerrar mes";
 let balanceClase=r.balanceMensual>=0?"ingreso":"gasto";
+let snapshotHTML=renderSnapshot();
 
 app.innerHTML=`
 
@@ -435,6 +441,8 @@ ${statsHTML}
 <h3>Historial</h3>
 ${lista}
 </div>
+
+${snapshotHTML}
 
 <div class="card">
 <h3>Backup</h3>
@@ -629,6 +637,128 @@ main();
 }
 
 function cancelEdit(){ editIndex=null; main(); }
+
+/* SNAPSHOT FINANCIERO */
+
+function renderSnapshot(){
+let gastos=data.snapshot.gastos;
+let ingresos=data.snapshot.ingresos;
+let totalGastos=gastos.reduce((t,x)=>t+(+x.importe||0),0);
+let totalIngresos=ingresos.reduce((t,x)=>t+(+x.importe||0),0);
+let balance=totalIngresos-totalGastos;
+
+return `
+<div class="card">
+<h3>Snapshot financiero</h3>
+
+<h4>Gastos estructurales</h4>
+<input id="snapGastoNombre" placeholder="Nombre">
+<input id="snapGastoImporte" placeholder="Importe">
+<select id="snapGastoTipo">
+<option value="fijo">fijo</option>
+<option value="variable">variable</option>
+</select>
+<button onclick="addSnapshot('gastos')">Añadir gasto</button>
+${renderSnapshotLista("gastos", gastos)}
+
+<h4>Ingresos estructurales</h4>
+<input id="snapIngresoNombre" placeholder="Nombre">
+<input id="snapIngresoImporte" placeholder="Importe">
+<select id="snapIngresoTipo">
+<option value="fijo">fijo</option>
+<option value="variable">variable</option>
+</select>
+<button onclick="addSnapshot('ingresos')">Añadir ingreso</button>
+${renderSnapshotLista("ingresos", ingresos)}
+
+<h4>Resumen estructural</h4>
+<p>Ingresos estructurales: ${totalIngresos.toFixed(2)}€</p>
+<p>Gastos estructurales: ${totalGastos.toFixed(2)}€</p>
+<p>Balance estructural: <span class="${balance>=0?"ingreso":"gasto"}">${balance>=0?"+":""}${balance.toFixed(2)}€</span></p>
+</div>
+`;
+}
+
+function renderSnapshotLista(grupo, items){
+let html="";
+items.forEach((item,i)=>{
+if(editSnapshot && editSnapshot.grupo===grupo && editSnapshot.index===i){
+html+=`
+<div class="hist">
+<div class="hist-left">
+<input id="snapEditNombre" value="${esc(item.nombre||"")}">
+<input id="snapEditImporte" value="${+item.importe||0}">
+<select id="snapEditTipo">
+<option value="fijo" ${item.tipo==="fijo"?"selected":""}>fijo</option>
+<option value="variable" ${item.tipo==="variable"?"selected":""}>variable</option>
+</select>
+</div>
+<div class="hist-right">
+<button onclick="saveSnapshotEdit('${grupo}',${i})">✔</button>
+<button onclick="cancelSnapshotEdit()">✖</button>
+</div>
+</div>`;
+}else{
+html+=`
+<div class="hist">
+<div class="hist-left">
+<div><b>${esc(item.nombre||"")}</b></div>
+<div class="small">${esc(item.tipo||"fijo")}</div>
+</div>
+<div class="hist-right">
+<div>${(+item.importe||0).toFixed(2)}€</div>
+<button onclick="editSnapshotItem('${grupo}',${i})">✏</button>
+<button onclick="deleteSnapshotItem('${grupo}',${i})">🗑</button>
+</div>
+</div>`;
+}
+});
+if(!html) html=`<p class="small">Sin registros</p>`;
+return html;
+}
+
+function addSnapshot(grupo){
+let prefijo=grupo==="gastos"?"snapGasto":"snapIngreso";
+let nombre=val(prefijo+"Nombre");
+let importe=+val(prefijo+"Importe")||0;
+let tipo=val(prefijo+"Tipo")||"fijo";
+if(!nombre && !importe) return;
+data.snapshot[grupo].push({
+id:Date.now()+"-"+Math.random().toString(16).slice(2),
+nombre,
+importe,
+tipo
+});
+save();
+main();
+}
+
+function editSnapshotItem(grupo,i){
+editSnapshot={grupo,index:i};
+main();
+}
+
+function saveSnapshotEdit(grupo,i){
+let item=data.snapshot[grupo][i];
+if(!item) return;
+item.nombre=val("snapEditNombre");
+item.importe=+val("snapEditImporte")||0;
+item.tipo=val("snapEditTipo")||"fijo";
+editSnapshot=null;
+save();
+main();
+}
+
+function cancelSnapshotEdit(){
+editSnapshot=null;
+main();
+}
+
+function deleteSnapshotItem(grupo,i){
+data.snapshot[grupo].splice(i,1);
+save();
+main();
+}
 
 /* ACCORDION */
 
