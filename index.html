@@ -28,13 +28,19 @@ input, select { width:100%; padding:8px; margin-bottom:10px; background:#222; co
 .control-day-main { min-width:0; }
 .control-actions { display:flex; gap:6px; align-items:center; text-align:right; }
 .control-actions button { padding:5px 7px; }
+.control-actions select { width:auto; min-width:115px; margin:0; padding:5px 7px; }
 .calendar-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:7px; text-align:center; }
 .calendar-head { color:#aaa; font-size:12px; }
-.calendar-dot { width:32px; height:32px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:auto; color:#111; font-weight:bold; font-size:13px; }
+.calendar-dot { width:38px; height:38px; border-radius:50%; display:flex; align-items:center; justify-content:center; margin:auto; color:#111; font-weight:bold; font-size:12px; }
+.calendar-legend { margin-top:12px; display:grid; grid-template-columns:1fr; gap:5px; }
+.calendar-legend p { margin:0; }
 .day-ok { background:#4caf50; }
-.day-low { background:#ffca28; }
+.day-near { background:#9c27b0; color:#fff; }
+.day-acceptable { background:#42a5f5; }
+.day-low { background:#fb8c00; }
 .day-zero { background:#ff5252; color:#fff; }
-.day-irregular { background:#9e9e9e; }
+.day-libranza { background:#e0e0e0; }
+.day-refuerzo { background:#f6c342; }
 .day-future { background:#333; color:#aaa; }
 .day-empty { min-height:32px; }
 .ia-list p { margin:7px 0; }
@@ -58,7 +64,7 @@ conceptos:["cafe","tabaco","comida","cole","alquiler","transporte","orange","luz
 precios:{ cafe:1.5, tabaco:6.7 },
 cerrados:{},
 snapshot:{ gastos:[], ingresos:[] },
-irregularidades:{}
+estadosDias:{}
 };
 
 let modo="facturacion";
@@ -74,7 +80,14 @@ if(!Array.isArray(data.conceptos)) data.conceptos=["cafe","tabaco","comida","col
 if(!data.precios) data.precios={ cafe:1.5, tabaco:6.7 };
 if(!data.cerrados) data.cerrados={};
 if(!data.snapshot) data.snapshot={ gastos:[], ingresos:[] };
-if(!data.irregularidades) data.irregularidades={};
+if(!data.estadosDias) data.estadosDias={};
+let estadosLegados=data["ir"+"regularidades"];
+if(estadosLegados){
+Object.keys(estadosLegados).forEach(key=>{
+if(estadosLegados[key] && !data.estadosDias[key]) data.estadosDias[key]="libranza";
+});
+delete data["ir"+"regularidades"];
+}
 if(!Array.isArray(data.snapshot.gastos)) data.snapshot.gastos=[];
 if(!Array.isArray(data.snapshot.ingresos)) data.snapshot.ingresos=[];
 if(data.config && !("objetivoDiario" in data.config)) data.config.objetivoDiario=300;
@@ -338,6 +351,47 @@ const d=new Date(fechaKey+"T00:00:00");
 return d.toLocaleDateString("es-ES",{weekday:"long"});
 }
 
+function estadoBaseDia(key){
+let wd=new Date(key+"T00:00:00").getDay();
+return wd===3?"libranza":"normal";
+}
+
+function getEstadoDia(key){
+return (data.estadosDias && data.estadosDias[key]) || estadoBaseDia(key);
+}
+
+function getEstadoRendimiento(total, objetivo){
+if(total<=0) return "zero";
+if(total>=objetivo) return "ok";
+if(total>=objetivo*(275/300)) return "near";
+if(total>=objetivo*(250/300)) return "acceptable";
+return "low";
+}
+
+function getIconoControl(estado){
+return {
+ok:"🟢",
+near:"🟣",
+acceptable:"🔵",
+low:"🟠",
+zero:"🔴",
+libranza:"⚪",
+refuerzo:"⭐"
+}[estado] || "⚪";
+}
+
+function getClaseControl(estado){
+return {
+ok:"day-ok",
+near:"day-near",
+acceptable:"day-acceptable",
+low:"day-low",
+zero:"day-zero",
+libranza:"day-libranza",
+refuerzo:"day-refuerzo"
+}[estado] || "day-future";
+}
+
 function agruparIngresosPorDia(){
 let porDia={};
 data.movimientos.forEach(m=>{
@@ -359,11 +413,13 @@ let objetivo=+(data.config && data.config.objetivoDiario)||300;
 let porDia=agruparIngresosPorDia();
 let dias=getDiasMesAnalisis(mesVisualizado).map(key=>{
 let ingreso=porDia[key]||{total:0, efectivo:0, tarjeta:0};
-let irregular=!!data.irregularidades[key];
-let estado=irregular?"irregular":ingreso.total>=objetivo?"ok":ingreso.total>0?"low":"zero";
-return {key, ingreso, irregular, estado};
+let tipoDia=getEstadoDia(key);
+let estado=tipoDia==="libranza"?"libranza":tipoDia==="refuerzo"?"refuerzo":getEstadoRendimiento(ingreso.total,objetivo);
+return {key, ingreso, tipoDia, estado};
 });
-let normales=dias.filter(d=>!d.irregular);
+let normales=dias.filter(d=>d.tipoDia==="normal");
+let libranzas=dias.filter(d=>d.tipoDia==="libranza");
+let refuerzos=dias.filter(d=>d.tipoDia==="refuerzo");
 let trabajados=normales.filter(d=>d.ingreso.total>0);
 let cumplidos=normales.filter(d=>d.ingreso.total>=objetivo).length;
 let bajos=normales.filter(d=>d.ingreso.total>0 && d.ingreso.total<objetivo).length;
@@ -372,14 +428,15 @@ let totalNormal=normales.reduce((t,d)=>t+d.ingreso.total,0);
 let media=normales.length?totalNormal/normales.length:0;
 let mejor=trabajados.length?Math.max(...trabajados.map(d=>d.ingreso.total)):0;
 let peorTrabajado=trabajados.length?Math.min(...trabajados.map(d=>d.ingreso.total)):0;
-return {objetivo, dias, normales, trabajados, cumplidos, bajos, sinIngresos, media, mejor, peorTrabajado};
+let totalRefuerzos=refuerzos.reduce((t,d)=>t+d.ingreso.total,0);
+return {objetivo, dias, normales, libranzas, refuerzos, trabajados, cumplidos, bajos, sinIngresos, media, mejor, peorTrabajado, totalRefuerzos};
 }
 
 function getRachaBajos(dias, objetivo){
 let racha=0;
 for(let i=dias.length-1; i>=0; i--){
 let d=dias[i];
-if(d.irregular) continue;
+if(d.tipoDia!=="normal") continue;
 if(d.ingreso.total>0 && d.ingreso.total<objetivo) racha++;
 else break;
 }
@@ -387,14 +444,14 @@ return racha;
 }
 
 function getViernesFlojos(dias, objetivo){
-let viernes=dias.filter(d=>!d.irregular && new Date(d.key+"T00:00:00").getDay()===5 && d.ingreso.total>0).slice(-3);
+let viernes=dias.filter(d=>d.tipoDia==="normal" && new Date(d.key+"T00:00:00").getDay()===5 && d.ingreso.total>0).slice(-3);
 return viernes.length===3 && viernes.every(d=>d.ingreso.total<objetivo);
 }
 
 function getMejoresPeoresSemana(dias){
 let mapa={};
 dias.forEach(d=>{
-if(d.irregular || d.ingreso.total<=0) return;
+if(d.tipoDia!=="normal" || d.ingreso.total<=0) return;
 let wd=new Date(d.key+"T00:00:00").getDay();
 if(!mapa[wd]) mapa[wd]={total:0,count:0};
 mapa[wd].total+=d.ingreso.total;
@@ -411,6 +468,8 @@ return ["domingos","lunes","martes","miércoles","jueves","viernes","sábados"][
 
 function renderIAControl(c){
 let mensajes=[];
+if(c.refuerzos.length) mensajes.push(`⭐ Has realizado ${c.refuerzos.length} refuerzos este mes (${c.totalRefuerzos.toFixed(2)}€).`);
+if(c.libranzas.length) mensajes.push(`⚪ Libranzas registradas este mes: ${c.libranzas.length}.`);
 let racha=getRachaBajos(c.dias,c.objetivo);
 if(racha>=2) mensajes.push(`⚠ Llevas ${racha} días trabajados sin alcanzar el objetivo.`);
 if(getViernesFlojos(c.dias,c.objetivo)) mensajes.push("⚠ 3 viernes consecutivos por debajo del objetivo.");
@@ -452,10 +511,20 @@ for(let d=1; d<=last; d++){
 let key=mesVisualizado+"-"+String(d).padStart(2,"0");
 let item=porKey[key];
 let estado=item?item.estado:"future";
-let clase=estado==="ok"?"day-ok":estado==="low"?"day-low":estado==="zero"?"day-zero":estado==="irregular"?"day-irregular":"day-future";
-html+=`<div class="calendar-dot ${clase}">${d}</div>`;
+let clase=getClaseControl(estado);
+let icon=item?getIconoControl(estado):"";
+html+=`<div class="calendar-dot ${clase}">${icon}${d}</div>`;
 }
 html+=`</div>`;
+html+=`<div class="calendar-legend small">
+<p>🟢 Objetivo cumplido</p>
+<p>🟣 Cerca del objetivo</p>
+<p>🔵 Aceptable</p>
+<p>🟠 Bajo</p>
+<p>🔴 Sin ingresos</p>
+<p>⚪ Libranza</p>
+<p>⭐ Refuerzo</p>
+</div>`;
 return html;
 }
 
@@ -465,9 +534,9 @@ let lista=c.dias.map(d=>{
 let fecha=new Date(d.key+"T00:00:00");
 let dia=diaSemanaCorto(d.key);
 let label=dia.charAt(0).toUpperCase()+dia.slice(1)+" "+String(fecha.getDate()).padStart(2,"0")+"/"+String(fecha.getMonth()+1).padStart(2,"0");
-let icon=d.estado==="ok"?"🟢":d.estado==="low"?"🟡":d.estado==="zero"?"🔴":"⚪";
-let total=d.irregular?"IRREGULAR":d.ingreso.total.toFixed(2)+"€";
-let detalle=d.irregular?`${d.ingreso.total.toFixed(2)}€ reales`:`Ef. ${d.ingreso.efectivo.toFixed(2)}€ · Tarj. ${d.ingreso.tarjeta.toFixed(2)}€`;
+let icon=getIconoControl(d.estado);
+let total=d.tipoDia==="libranza"?"LIBRANZA":d.tipoDia==="refuerzo"?`${d.ingreso.total.toFixed(2)}€ · REFUERZO`:d.ingreso.total.toFixed(2)+"€";
+let detalle=d.tipoDia==="libranza"?`${d.ingreso.total.toFixed(2)}€ reales · sin objetivo`:d.tipoDia==="refuerzo"?`${d.ingreso.total.toFixed(2)}€ reales · no exige objetivo completo`:`Ef. ${d.ingreso.efectivo.toFixed(2)}€ · Tarj. ${d.ingreso.tarjeta.toFixed(2)}€`;
 return `
 <div class="control-day">
 <div class="control-day-main">
@@ -475,7 +544,11 @@ return `
 <div class="small">${detalle}</div>
 </div>
 <div class="control-actions">
-<button onclick="toggleIrregularidad('${d.key}')">${d.irregular?"Normal":"Irregular"}</button>
+<select onchange="setEstadoDia('${d.key}', this.value)">
+<option value="normal" ${d.tipoDia==="normal"?"selected":""}>Normal</option>
+<option value="libranza" ${d.tipoDia==="libranza"?"selected":""}>Libranza</option>
+<option value="refuerzo" ${d.tipoDia==="refuerzo"?"selected":""}>Refuerzo</option>
+</select>
 </div>
 </div>`;
 }).join("");
@@ -492,6 +565,9 @@ return `
 <p>📈 Media diaria: ${c.media.toFixed(2)}€</p>
 <p>🔥 Mejor día: ${c.mejor.toFixed(2)}€</p>
 <p>📉 Peor día trabajado: ${c.peorTrabajado.toFixed(2)}€</p>
+<p>📊 Días normales: ${c.normales.length}</p>
+<p>⚪ Libranzas: ${c.libranzas.length}</p>
+<p>⭐ Refuerzos: ${c.refuerzos.length}</p>
 <div class="control-wrap">
 <div>${lista || `<p class="small">Sin días para analizar</p>`}</div>
 <div>${renderCalendarioControl(c)}<h4>IA operativa</h4>${renderIAControl(c)}</div>
@@ -1037,14 +1113,14 @@ save();
 main();
 }
 
-function toggleIrregularidad(key){
+function setEstadoDia(key, estado){
 if(mesCerrado(key.slice(0,7))){
 alert("Este mes está cerrado");
 return;
 }
-if(!data.irregularidades) data.irregularidades={};
-data.irregularidades[key]=!data.irregularidades[key];
-if(!data.irregularidades[key]) delete data.irregularidades[key];
+if(!data.estadosDias) data.estadosDias={};
+if(estado===estadoBaseDia(key)) delete data.estadosDias[key];
+else data.estadosDias[key]=estado;
 save();
 main();
 }
