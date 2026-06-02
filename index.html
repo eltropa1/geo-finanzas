@@ -806,7 +806,7 @@ return `
 <div class="screen-title">
 <div>
 <h2>Taxi</h2>
-<p class="small">Rendimiento operativo del mes visualizado</p>
+<p class="small">Rendimiento operativo del mes visualizado: ${nombreMes(mesVisualizado)}</p>
 </div>
 </div>
 ${renderMesSelector()}
@@ -819,6 +819,7 @@ ${renderMesSelector()}
 <div class="card metric"><div class="label">Cobro real</div><div class="value">${r.cobroReal.toFixed(2)}€</div><div class="sub">Balance mensual ${r.balanceMensual.toFixed(2)}€</div></div>
 </div>
 <div class="card">
+<h3>Entrada taxi</h3>
 <div class="row">
 <button onclick="setModo('facturacion')">Ingreso</button>
 <button onclick="setModo('gasto')">Gasto</button>
@@ -830,15 +831,18 @@ ${renderMesSelector()}
 </div>
 ${renderControlIngresos()}
 <div class="card">
-<h3>Resumen mensual</h3>
+<h3>IA operativa de ingresos</h3>
+<p>Estado: ${r.estado}</p>
+<p>Gasto máximo hoy: ${r.gastoMaximo.toFixed(2)}€</p>
+<p>Proyección fin de mes: ${r.saldoPrevisto.toFixed(2)}€</p>
+<p>Fuga: ${r.topConcepto||"-"} (${(r.topValor||0).toFixed(2)}€)</p>
+<p>Ahorro posible: ${r.ahorro.toFixed(2)}€</p>
+<p>Combustible: ${r.controlComb}</p>
+</div>
+<div class="card">
+<h3>Cierre del mes</h3>
 <p>${nombreMes(mesVisualizado)}</p>
-<p>Facturación: ${r.fact.toFixed(2)}€</p>
-<p>Cobro real: ${r.cobroReal.toFixed(2)}€</p>
-<p>Gastos: ${r.totalGastos.toFixed(2)}€</p>
-<p>Combustible: ${r.comb.toFixed(2)}€</p>
-<p>Balance: <span class="${r.balanceMensual>=0?"ingreso":"gasto"}">${r.balanceMensual>=0?"+":""}${r.balanceMensual.toFixed(2)}€</span></p>
-<p>Mayor fuga: ${r.topConcepto||"-"}</p>
-<p>Movimientos: ${r.movimientosMes}</p>
+<p>Mes visualizado: ${mesVisualizado} ${cerradoActual?"🔒":""}</p>
 <button onclick="toggleCierreMes()">${cierreTexto}</button>
 </div>
 </div>`;
